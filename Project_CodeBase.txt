@@ -1,0 +1,1793 @@
+---------------IS620 Advanced Database Projects--------------------
+-------------------------Group Project-------------------------
+-------------------------Team: Nexus-------------------------------
+
+
+---------------IS620 Advanced Database Projects--------------------
+-------------------------Group Project-------------------------
+/*Project Title and Objective
+---An Online Shopping DB System
+The objective at hand is the creation of a comprehensive online marketplace that will compete with existing behemoths such as Amazon and Walmart. The building and administration of an Oracle database, which will serve as the platform's structural backbone, is key to this endeavor. The project's scope includes several essential components, including designing and implementing a strong database structure, creating tables for fast data storage and retrieval, and creating a suite of PL/SQL stored procedures. These procedures will not only handle core functions like adding new products, managing customer information, and processing orders, but they will also handle advanced features like issuing invoices, generating tailored product recommendations, and executing detailed business reports. */
+
+--POGIL Roles:
+--Manoj Sai Pagadala - Facilitator 
+--Ganesh Yalavarthi - Quality Control
+--Shanmukhi Gundu - Process Analyst 
+--Sai Charan Reddy Mandadi - Quality Control
+--Akshith Reddy Pinkeshi - Process Analyst 
+--Suprajyotsna Dasari - Spokesperson
+
+--Project Roles: 
+--Manoj Sai Pagadala - Member 1
+--Ganesh Yalavarthi - Member 2
+--Shanmukhi Gundu - Member 3
+--Sai Charan Reddy Mandadi - Member 4
+--Akshith Reddy Pinkeshi - Member - 5
+--Suprajyotsna Dasari - Member 6
+
+
+SET SERVEROUTPUT ON;
+DROP TABLE RECOMMENDATIONS cascade Constraints;
+DROP TABLE REVIEWS cascade Constraints;
+DROP TABLE INVOICES cascade Constraints;
+DROP TABLE CREDIT_CARDS cascade Constraints;
+DROP TABLE ORDERS cascade Constraints;
+DROP TABLE PRODUCTS cascade Constraints ;
+DROP TABLE PRODUCT_CATEGORIES cascade Constraints;
+DROP TABLE CUSTOMERS cascade Constraints;
+
+--Create Customers Table
+CREATE TABLE Customers (
+  customer_id INT PRIMARY KEY,
+  first_name VARCHAR(50),
+  last_name VARCHAR(50),
+  email VARCHAR(100),
+  city VARCHAR(50),
+  state VARCHAR(50),
+  zip INT
+);
+
+-- Create Product Categories table
+CREATE TABLE Product_Categories (
+  category_id INT PRIMARY KEY,
+  category_name VARCHAR(50),
+  description VARCHAR(200)
+);
+
+-- Create Products table
+CREATE TABLE Products (
+  product_id INT PRIMARY KEY,
+  product_name VARCHAR(100),
+  available_quantity_in_store INT,
+  unit_price DECIMAL(10, 2),
+  category_id INT,
+  FOREIGN KEY (category_id) REFERENCES Product_Categories(category_id)
+);
+
+-- Create Orders table
+CREATE TABLE Orders (
+  order_id INT PRIMARY KEY,
+  customer_id INT,
+  product_id INT,
+  quantity INT,
+  order_date date,
+  FOREIGN KEY (customer_id) REFERENCES Customers(customer_id),
+  FOREIGN KEY (product_id) REFERENCES Products(product_id)
+);
+
+-- Create Credit Cards table
+CREATE TABLE Credit_Cards (
+  customer_id INT,
+  credit_card_number INT PRIMARY KEY, 
+  credit_card_type VARCHAR(10),
+  expiration_year INT,
+  expiration_month INT,
+  FOREIGN KEY (customer_id) REFERENCES Customers(customer_id)
+);
+
+-- Create Invoices table
+CREATE TABLE Invoices (
+  invoice_id INT PRIMARY KEY,
+  order_id INT,
+  customer_id INT,
+  credit_card_number INT,
+  amount DECIMAL(20, 2),
+  FOREIGN KEY (order_id) REFERENCES Orders(order_id),
+  FOREIGN KEY (customer_id) REFERENCES Customers(customer_id),
+  FOREIGN KEY (credit_card_number) REFERENCES Credit_Cards(credit_card_number)
+);
+
+-- Create Reviews table
+CREATE TABLE Reviews (
+  review_id INT PRIMARY KEY,
+  product_id INT,
+  reviewer_email VARCHAR(100),
+  stars_given INT,
+  review_text VARCHAR(1000),
+  FOREIGN KEY (product_id) REFERENCES Products(product_id)
+);
+
+-- Create Recommendations table
+CREATE TABLE Recommendations (
+  recommendation_id INT PRIMARY KEY,
+  customer_id INT,
+  recommended_product_id INT,
+  recommendation_date DATE,
+  FOREIGN KEY (customer_id) REFERENCES Customers(customer_id),
+  FOREIGN KEY (recommended_product_id) REFERENCES Products(product_id)
+);
+
+
+
+--MEMBER 1: MANOJ SAI
+-- Dropping existing sequence
+DROP SEQUENCE customer_id_seq;
+
+-- Creating sequence to auto-generate and increment Customer ID
+CREATE SEQUENCE customer_id_seq START WITH 1;
+
+-- Procedure for inserting new customers into the customer table
+CREATE OR REPLACE PROCEDURE Add_Customer(Add_Cust_ID in INT,
+    Add_first_name IN VARCHAR,
+    Add_last_name IN VARCHAR,
+    Add_email IN VARCHAR,
+    Add_city IN VARCHAR,
+    Add_state IN VARCHAR,
+    Add_zip IN VARCHAR
+) AS
+x customers%rowtype;
+BEGIN
+    x.customer_ID := Add_Cust_ID;
+    x.first_name := Add_first_name;
+    x.last_name := Add_last_name;
+    x.email := Add_email;
+    x.city := Add_city;
+    x.state := Add_state;
+    x.zip := Add_zip;
+INSERT INTO CUSTOMERS VALUES  x;
+dbms_output.put_line('ADDING CUSTOMER '||x.first_name||' '||x.last_name);
+END;
+/
+
+
+--Procedure to show all Customer details when the input paramter is state
+Create or replace procedure Show_all_customers_in_state(
+  input_state in VARCHAR) as
+cursor c1 is select first_name,last_name,email,credit_card_number,credit_card_type
+from customers,credit_cards
+where customers.customer_id = credit_cards.customer_id and customers.state=input_state;
+begin
+dbms_output.put_line('Customers in '||input_state);
+for i in c1
+Loop
+ dbms_output.put_line(i.first_name||'   '||i.last_name||' | | '||i.email||' | | ' ||i.credit_card_number||' | | '||i.credit_card_type);
+end loop;
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    DBMS_OUTPUT.PUT_LINE('No customers found in ' || input_state);
+END;
+/
+
+
+--creating a function to find customer id using email as input parameter
+Create or replace function FIND_CUSTOMER_ID (input_email in varchar) return number
+IS
+cid number;
+BEGIN
+	select customer_id into cid from customers where email = input_email;
+	return cid;
+exception
+	when no_data_found then
+	dbms_output.put_line('no such customer');
+	return -1;
+End;
+/
+
+-- Creating procedure that takes CustomerID and credit card information as inputs and inserts a new credit card to the Credit Cards table
+--Implementing procedure to add credit card details for finding further details when details of customer including credit card are needed when a state name is given
+create or replace procedure Add_CreditCard(CustoID in INT,cardno in int,cardty in VARCHAR,expyear in int,expmonth in int)as
+y Credit_Cards%rowtype;
+begin
+y.customer_id:=CustoID;
+y.credit_card_number:=cardno;
+y.credit_card_type:=cardty;
+y.expiration_year:=expyear;
+y.expiration_month:=expmonth;
+INSERT INTO Credit_Cards VALUES y;
+dbms_output.put_line('ADDING CREDIT CARD WITH CARD NUMBER '||y.credit_card_number);
+END;
+
+/
+
+--creating a procedure to find the customer details whose credit card is going to expire before 2 months of given date
+create or replace Procedure Report_Cards_Expire(input_date in date)as
+BEGIN
+  FOR s IN (
+    SELECT  c.first_name, c.last_name, cc.credit_card_number, cc.credit_card_type, cc.expiration_year, cc.expiration_month
+    FROM Customers c
+    JOIN Credit_Cards cc ON c.customer_id = cc.customer_id
+   WHERE (cc.expiration_year=EXTRACT(YEAR FROM input_date) and EXTRACT(YEAR FROM input_date)= EXTRACT(YEAR FROM input_date-interval '2' month) AND 
+       cc.expiration_month >= EXTRACT(MONTH FROM input_date-interval '2' month)and cc.expiration_month <= EXTRACT(MONTH FROM input_date))
+or (EXTRACT(YEAR FROM input_date) > EXTRACT(YEAR FROM input_date-interval '2' month) and cc.expiration_month >= EXTRACT(MONTH FROM input_date-interval '2' month))
+    ORDER BY c.last_name, c.first_name
+)
+  LOOP
+DBMS_OUTPUT.PUT_LINE(
+      s.last_name || ', ' || s.first_name || ', ' || s.credit_card_number || ', ' ||
+      s.credit_card_type || ', ' || s.expiration_year || ', ' || s.expiration_month
+    );
+  END LOOP;
+exception
+	when no_data_found then
+	dbms_output.put_line('no data is found');
+
+END;
+/
+show errors;
+
+--------------------------------------------------------------------------
+--MEMBER 2: GANESH
+
+--Create sequence for category_id
+drop sequence add_category_seq;
+create sequence add_category_seq start with 1;
+
+--Create procedure to insert values to product category table
+create or replace procedure Add_Category(input_category_name in varchar,input_description in varchar) 
+as
+begin 
+insert into product_categories values(add_category_seq.nextval,input_category_name,input_description);
+dbms_output.put_line(input_category_name||' is added successfully');
+end;
+/
+
+--Helper function to find the category_id for adding a product
+CREATE or replace FUNCTION FIND_PRODUCT_CATEGORY_ID (input_category_name in VARCHAR)
+RETURN INT
+as
+categoryid INT;
+
+BEGIN
+    SELECT category_id INTO categoryid
+    FROM Product_Categories
+    WHERE category_name = input_category_name;
+    RETURN categoryid;
+exception
+    when no_data_found then
+    dbms_output.put_line('no_such_category');
+    return -1;
+END;
+/
+
+--Creating sequence for adding product_id
+drop sequence add_prod_seq;
+create sequence add_prod_seq start with 1001;
+
+--Creating procedure to add new product to products table
+create or replace procedure Add_Product (input_product_name in varchar,input_available_quantity in int, input_unit_price in decimal,input_category_name varchar)
+as
+categoryid int;
+begin
+categoryid := FIND_PRODUCT_CATEGORY_ID (input_category_name);
+if categoryid > 0 then
+insert into products values(add_prod_seq.nextval,input_product_name,input_available_quantity, input_unit_price,categoryid);
+dbms_output.put_line(input_product_name||' product added successfully');
+else
+dbms_output.put_line('Product can not be added');
+end if;
+end;
+/
+
+-- Creating procedure will take as input the productID and the units (quantity) of a product in an order, 
+-- and will update the inventory in the Products 
+CREATE or replace PROCEDURE Update_Inventory(
+  input_product_ID IN orders.product_ID%type,
+  input_quantity IN orders.quantity%type
+)AS
+    currentQuantity INT;
+    RestockingQuantity INT;
+BEGIN
+UPDATE products
+SET products.available_quantity_in_store = Products.available_quantity_in_store - input_quantity
+WHERE products.product_ID = input_product_ID;
+Select available_quantity_in_store into RestockingQuantity from products where product_id=input_product_ID;
+dbms_output.put_line('The current quantity of Product : '|| input_product_ID|| 'is ' ||RestockingQuantity );
+
+--code for restocking the products that has <50 quantity 
+--this is executed when report_low_inventory is triggered
+    SELECT available_quantity_in_store INTO currentQuantity 
+    FROM Products 
+    WHERE product_ID = input_product_ID;
+    IF currentQuantity < 50 THEN
+        -- Restocking logic
+        -- Example: Set Quantity to 100 (or any other restocking level)
+        UPDATE Products
+        SET available_quantity_in_store = 100
+        WHERE product_ID = input_product_ID;
+        dbms_output.put_line(' ');
+        dbms_output.put_line('-------------------RESTOCKING INVENTORY-------------------');
+        dbms_output.put_line('PRODUCT ID: ' || input_product_id || ' is RESTOCKED to new available quantity 100');
+        dbms_output.put_line('as the Report_low_inventory trigger is activated');
+        dbms_output.put_line(' ');
+    END IF;
+END;
+/
+
+
+--procedure to display inventory in each category
+create or replace procedure Report_Inventory
+as
+cursor c1 is
+SELECT pc.category_name, 
+CASE WHEN SUM(p.available_quantity_in_store) IS NULL THEN 0 ELSE SUM(p.available_quantity_in_store) END AS total_quantity
+FROM product_categories pc
+LEFT JOIN products p ON pc.category_id = p.category_id
+GROUP BY pc.category_name;
+cat_name varchar(50);
+available_quant int;
+begin
+open c1;
+loop
+fetch c1 into cat_name, available_quant;
+exit when c1%notfound;
+dbms_output.put_line('Category Name = ' || cat_name || ' || Available Quantity = ' || available_quant);
+end loop;
+close c1;
+end;
+/
+show errors;
+
+--------------------------------------------------------------------------------------------
+
+--MEMBER3: SHANMUKHI GUNDU
+--a sequence to generate  order id
+DROP SEQUENCE order_id_seq;
+CREATE SEQUENCE order_id_seq START WITH 1 INCREMENT BY 1
+    NOCACHE
+    NOCYCLE;
+
+-- helper function to find customer id using email
+CREATE OR REPLACE FUNCTION FIND_CUSTOMER_ID(input_email IN CUSTOMERS.EMAIL%TYPE)
+RETURN NUMBER
+IS
+    Helper_customer_id CUSTOMERS.CUSTOMER_ID%TYPE;
+BEGIN
+      select customer_ID into Helper_customer_id
+      from customers
+      where email = input_email;
+      RETURN helper_customer_id;
+EXCEPTION
+    when no_data_found then
+	 dbms_output.put_line('no such customers');
+	 return -1;
+	 when too_many_rows then
+	 dbms_output.put_line('more than 1 customer with the name, the first one is');
+	 return helper_customer_id;
+END;
+/
+show errors;
+
+-- helper function to find product id using product name
+CREATE OR REPLACE FUNCTION FIND_PRODUCT_ID(input_product_name IN PRODUCTS.PRODUCT_NAME%type)
+RETURN NUMBER
+IS
+    helper_product_id PRODUCTS.PRODUCT_ID%type;
+BEGIN
+    SELECT product_id INTO helper_product_id
+    FROM products
+    WHERE product_name = input_product_name;
+    
+    RETURN helper_product_id;
+EXCEPTION
+    when no_data_found then
+	 dbms_output.put_line('no such product');
+	 return -1;
+	when too_many_rows then
+	 dbms_output.put_line('more than one product with the name,the first one is');
+	 return helper_product_id;
+END;
+/
+show errors;
+
+
+--MEMBER 4: CHARAN
+--Creating this procedure before to call in Place_Order procedure
+CREATE OR REPLACE PROCEDURE Invoice_Customer (Input_order_id IN int, input_customer_id IN int,input_credit_card_num IN int, input_amount IN decimal)
+IS
+  helper_invoice_id Invoices.invoice_id%TYPE;
+BEGIN
+  -- Call helper functions to find the required IDs
+  SELECT MAX(invoice_id) + 1 INTO helper_invoice_id FROM Invoices;
+  IF helper_invoice_id IS NULL THEN
+    helper_invoice_id := 1;
+  END IF;
+  -- Insert new record into Invoice table
+  INSERT INTO Invoices (invoice_iD, order_ID, customer_id, credit_card_number, amount)
+  VALUES (helper_invoice_id, input_order_id, input_customer_id, input_credit_card_num, input_amount);
+  dbms_output.put_line('ADDING RECORDS TO INVOICE TABLE');
+  DBMS_OUTPUT.PUT_LINE('Record inserted into Invoice table with Invoice ID: ' || helper_invoice_id);
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END;
+/
+
+--MEMBER 3: SHANMUKHI GUNDU
+--Creating this procedure to Place an order taking inputs as email,productname,product quatity,credit card number and date--
+
+CREATE OR REPLACE PROCEDURE Place_Order(
+    input_email IN customers.email%type,
+    input_product_name IN products.Product_Name%type,
+    input_quantity IN orders.quantity%type,
+    input_credit_card_number IN credit_cards.CREDIT_CARD_NUMBER%type,
+    input_date in date
+)
+IS
+  input_customer_id CUSTOMERS.CUSTOMER_ID%TYPE;
+  input_product_id PRODUCTS.PRODUCT_ID%type;
+  input_amount decimal;
+  input_total_amount decimal;
+  input_order_id number;
+    
+BEGIN
+
+    -- Calling Helper function to find the customer ID
+    input_customer_id := FIND_CUSTOMER_ID(input_email);
+    -- Calling Helper function to find the product ID
+    input_product_id := FIND_PRODUCT_ID(input_product_name);
+    
+    select unit_price into input_amount from products 
+    where product_id = input_product_id;
+    
+    input_total_amount := input_amount * input_quantity;
+    input_order_id := order_id_seq.NEXTVAL;
+    
+    -- Insert the order into the Orders table
+    INSERT INTO Orders VALUES (input_order_id, input_customer_id, input_product_id, input_quantity,input_date);
+    
+--executing the procedure Invoice_Customer(p_order_id,p_customer_id, p_credit_card_number,p_total_amount);
+Invoice_Customer(input_order_id,input_customer_id, input_credit_card_number,input_total_amount);
+--executing update inventory procedure
+Update_Inventory(input_product_id,input_quantity);
+
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+	 dbms_output.put_line('no customer');
+        ROLLBACK;
+        RAISE;
+END;
+/
+
+--Creating this procedure to show all the orders placed and sum of all the orders--
+CREATE OR REPLACE PROCEDURE Show_Orders
+IS
+  --Declaring a variable to store total number of orders
+  tot_orders NUMBER := 0; 
+BEGIN
+  FOR order_rec IN (SELECT c.first_name,c.last_name, p.product_name, o.quantity, i.amount
+                    FROM orders o
+                    JOIN customers c ON o.customer_id = c.customer_id
+                    JOIN products p ON o.product_id = p.product_id
+                    JOIN invoices i ON o.order_id = i.order_id)
+  LOOP
+    -- display the order information
+    DBMS_OUTPUT.PUT_LINE('Customer Name: ' || order_rec.first_name ||
+                         ',' || order_rec.last_name ||
+                         ', Product: ' || order_rec.product_name ||
+                         ', Quantity Ordered: ' || order_rec.quantity ||
+                         ', Amount Charged: $' || order_rec.amount);
+    tot_orders := tot_orders + 1; -- increment the total orders count
+  END LOOP;
+
+  -- display the total number of orders
+  DBMS_OUTPUT.PUT_LINE('Total number of orders: ' || tot_orders);
+END;
+/
+
+
+--  Creating a Report_Orders_by_State procedure that takes a state as input.
+CREATE OR REPLACE PROCEDURE Report_Orders_by_State (
+   input_state IN VARCHAR2
+)
+IS
+   tot_amount NUMBER := 0;
+BEGIN
+   dbms_output.put_line('Reporting Orders in '||input_state);
+   FOR c IN (SELECT c.first_name,c.last_name, c.email,
+                    COUNT(o.order_id) AS order_count,
+                    SUM(o.quantity * p.unit_price) AS order_amount
+             FROM customers c
+             JOIN orders o ON c.customer_id = o.customer_id
+             JOIN products p ON o.product_id = p.product_id
+             WHERE c.state = input_state
+             GROUP BY c.first_name,c.last_name, c.email)
+   LOOP
+   
+      DBMS_OUTPUT.PUT_LINE('Customer Name: ' || c.first_name || ' ' || c.last_name);
+      DBMS_OUTPUT.PUT_LINE('Email: ' || c.email);
+      DBMS_OUTPUT.PUT_LINE('Total Orders Placed: ' || c.order_count);
+      DBMS_OUTPUT.PUT_LINE('Total Amount Spent: $' || c.order_amount);
+      DBMS_OUTPUT.PUT_LINE('----------------------------------');
+      
+      tot_amount := tot_amount + c.order_amount;
+   END LOOP;
+   
+   IF tot_amount = 0 THEN
+      DBMS_OUTPUT.PUT_LINE('No orders found from ' || input_state);
+   ELSE
+      DBMS_OUTPUT.PUT_LINE('Grand Total Amount Spent: $' || tot_amount);
+   END IF;
+EXCEPTION
+   WHEN OTHERS THEN
+      DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END;
+/
+
+-- Creating a trigger which automatically shows on the screen, all products that are below 50 units in stock.
+CREATE OR REPLACE TRIGGER Report_Low_Inventory
+AFTER INSERT OR UPDATE ON Products
+FOR EACH ROW
+DECLARE
+  v_available_qty Products.AVAILABLE_QUANTITY_IN_STORE%TYPE;
+BEGIN
+  IF :NEW.AVAILABLE_QUANTITY_IN_STORE < 50 THEN
+    dbms_output.put_line('Available Quantity is less than 50 for below product');
+    DBMS_OUTPUT.PUT_LINE('Product ID: ' || :NEW.product_id);
+    DBMS_OUTPUT.PUT_LINE('Product Name: ' || :NEW.product_name);
+    DBMS_OUTPUT.PUT_LINE('Available Quantity: ' || :NEW.AVAILABLE_QUANTITY_IN_STORE);
+  END IF;
+END;
+/
+
+
+--------------------------------------------------------------------------
+--MEMBER 4 CHARAN
+
+CREATE OR REPLACE PROCEDURE Report_Best_Customers (input_amount IN DECIMAL)
+IS
+BEGIN
+  FOR customer_rec IN (SELECT c.first_name,c.last_name, SUM(o.amount) as Total_Amount
+                       FROM Customers c JOIN Invoices o
+                         ON c.customer_id = o.customer_id
+                       GROUP BY c.first_name,c.last_name)
+  LOOP
+    IF customer_rec.Total_Amount > input_amount THEN
+      DBMS_OUTPUT.PUT_LINE('Customer Name: ' || customer_rec.first_name ||customer_rec.last_name ||
+                           ', Total Amount Spent: ' || customer_rec.Total_Amount);
+    END IF;
+  END LOOP;
+END;
+/
+show errors;
+
+
+CREATE OR REPLACE PROCEDURE Payments_to_CC IS
+  -- Variables to store total fees for each credit card type
+  total_visa_fee DECIMAL(20, 2) := 0;
+  total_mc_fee DECIMAL(20, 2) := 0;
+  total_amex_fee DECIMAL(20, 2) := 0;
+  total_discover_fee DECIMAL(20, 2) := 0;
+
+BEGIN
+  -- Calculate fees for VISA
+  SELECT SUM(amount * 0.03) INTO total_visa_fee
+  FROM Invoices i
+  JOIN Credit_Cards cc ON i.credit_card_number = cc.credit_card_number
+  WHERE cc.credit_card_type = 'VISA';
+
+  -- Calculate fees for MC
+  SELECT SUM(amount * 0.03) INTO total_mc_fee
+  FROM Invoices i
+  JOIN Credit_Cards cc ON i.credit_card_number = cc.credit_card_number
+  WHERE cc.credit_card_type = 'MC';
+
+  -- Calculate fees for AMEX
+  SELECT SUM(amount * 0.05) INTO total_amex_fee
+  FROM Invoices i
+  JOIN Credit_Cards cc ON i.credit_card_number = cc.credit_card_number
+  WHERE cc.credit_card_type = 'AMEX';
+
+  -- Calculate fees for Discover
+  SELECT SUM(amount * 0.02) INTO total_discover_fee
+  FROM Invoices i
+  JOIN Credit_Cards cc ON i.credit_card_number = cc.credit_card_number
+  WHERE cc.credit_card_type = 'Discover';
+
+  -- Print out the total fees for each credit card type
+  DBMS_OUTPUT.PUT_LINE('Total fee for VISA: $' || total_visa_fee);
+  DBMS_OUTPUT.PUT_LINE('Total fee for MC: $' || total_mc_fee);
+  DBMS_OUTPUT.PUT_LINE('Total fee for AMEX: $' || total_amex_fee);
+  DBMS_OUTPUT.PUT_LINE('Total fee for Discover: $' || total_discover_fee);
+EXCEPTION
+  -- Exception handling
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END Payments_to_CC;
+/
+
+
+
+CREATE OR REPLACE PROCEDURE Thrifty_Customer (p_X IN NUMBER)
+IS
+    -- cursor to fetch customer data
+    CURSOR c_customers IS 
+        SELECT c.customer_id, c.first_name, c.last_name, SUM(i.amount) AS total_spent
+        FROM Customers c
+        JOIN Invoices i ON c.customer_id = i.customer_id
+        GROUP BY c.customer_id, c.first_name, c.last_name
+        ORDER BY SUM(i.amount) ASC;
+
+    -- variables to store customer data
+    v_customer_id Customers.customer_id%TYPE;
+    v_first_name Customers.first_name%TYPE;
+    v_last_name Customers.last_name%TYPE;
+    v_total_spent Invoices.amount%TYPE;
+    v_counter NUMBER := 0;
+BEGIN
+    -- loop through cursor to fetch customer data
+    OPEN c_customers;
+    LOOP
+        FETCH c_customers INTO v_customer_id, v_first_name, v_last_name, v_total_spent;
+        EXIT WHEN c_customers%NOTFOUND OR v_counter >= p_X;
+        DBMS_OUTPUT.PUT_LINE('Customer ID: ' || v_customer_id || ', Name: ' || v_first_name || ' ' || v_last_name || ', Total Spent: ' || v_total_spent);
+        v_counter := v_counter + 1; -- Increment the counter after each row is fetched
+    END LOOP;
+    CLOSE c_customers;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+        CLOSE c_customers; -- Make sure to close the cursor if an error occurs
+END Thrifty_Customer;
+/
+
+-----------------------------------------------------------------
+--MEMBER 5: AKSHITH
+
+--creating sequence for review 
+DROP SEQUENCE add_rev_seq;
+CREATE SEQUENCE add_rev_seq START WITH 1 INCREMENT BY 1;
+
+CREATE OR REPLACE PROCEDURE Add_Review (
+  reviewer_email IN VARCHAR2,
+  stars_given IN INT,
+  product_name IN VARCHAR2,
+  review_text IN VARCHAR2
+) IS
+  found_product_id INT;
+BEGIN
+  -- Call the helper function to get the product ID
+  found_product_id := Find_Product_ID(product_name);
+
+  -- Check if the product ID was found
+  IF found_product_id IS NOT NULL THEN
+    -- Insert the review into the Reviews table
+    INSERT INTO Reviews (review_id, product_id, reviewer_email, stars_given, review_text)
+    VALUES (add_rev_seq.NEXTVAL, found_product_id, reviewer_email, stars_given, review_text);
+    DBMS_OUTPUT.PUT_LINE('Review added successfully!');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('Product not found: ' || product_name);
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END ;
+/
+
+CREATE OR REPLACE FUNCTION Get_Product_Name(p_product_id IN products.product_id%type) RETURN VARCHAR
+ IS
+  v_product_name products.product_name%TYPE;
+BEGIN
+  SELECT product_name INTO v_product_name
+  FROM products
+  WHERE product_id = p_product_id;
+  
+  RETURN v_product_name;
+END;
+/
+show errors;
+
+CREATE OR REPLACE PROCEDURE Buy_Or_Beware (X IN INT) IS
+    -- Cursor to fetch top X products based on average stars
+    CURSOR c_top_products IS
+        SELECT product_id ,
+avg_stars ,
+std_dev  FROM (
+            SELECT product_id, AVG(stars_given) AS avg_stars, STDDEV(stars_given) AS std_dev
+            FROM Reviews
+            GROUP BY product_id
+            ORDER BY AVG(stars_given) DESC, STDDEV(stars_given)
+        ) WHERE ROWNUM <= X;
+
+    -- Cursor to fetch worst X products based on average stars
+    CURSOR c_worst_products IS
+        SELECT product_id ,
+avg_stars ,
+std_dev  FROM (
+            SELECT product_id, AVG(stars_given) AS avg_stars, STDDEV(stars_given) AS std_dev
+            FROM Reviews
+            GROUP BY product_id
+            ORDER BY AVG(stars_given), STDDEV(stars_given) DESC
+        ) WHERE ROWNUM <= X;
+
+    -- Variables to store product data
+    v_product_id products.product_id%TYPE;
+    v_avg_stars NUMBER;
+    v_std_dev NUMBER;
+    v_product_name VARCHAR(100);
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Top Rated Products:');
+    -- Loop to fetch and display top X products
+    OPEN c_top_products;
+    LOOP
+        FETCH c_top_products INTO v_product_id, v_avg_stars, v_std_dev;
+        EXIT WHEN c_top_products%NOTFOUND;
+        v_product_name := Get_Product_Name(v_product_id);
+        DBMS_OUTPUT.PUT_LINE('Avg Stars: ' || v_avg_stars || ', Product ID: ' || v_product_id || ', Product Name: ' || v_product_name || ', Std Dev: ' || v_std_dev);
+    END LOOP;
+    CLOSE c_top_products;
+
+    DBMS_OUTPUT.PUT_LINE('Buyer Beware: Stay Away from...');
+    -- Loop to fetch and display worst X products
+    OPEN c_worst_products;
+    LOOP
+        FETCH c_worst_products INTO v_product_id, v_avg_stars, v_std_dev;
+        EXIT WHEN c_worst_products%NOTFOUND;
+        v_product_name := Get_Product_Name(v_product_id);
+        DBMS_OUTPUT.PUT_LINE('Avg Stars: ' || v_avg_stars || ', Product ID: ' || v_product_id || ', Product Name: ' || v_product_name || ', Std Dev: ' || v_std_dev);
+    END LOOP;
+    CLOSE c_worst_products;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END Buy_Or_Beware;
+/
+show errors;
+
+
+-- Create a sequence to generate recommendation_id values
+DROP SEQUENCE recommendation_id_seq;
+CREATE SEQUENCE recommendation_id_seq START WITH 1 INCREMENT BY 1;
+
+--Creating procedure for Recommend to Customer
+CREATE OR REPLACE PROCEDURE Recommend_To_Customer(customer_id_input IN Customers.customer_id%TYPE) AS
+    recommended_product_id Products.product_id%TYPE;
+    v_count NUMBER;
+    Rec_latest_order_date DATE;
+    Rec_recommendation_date DATE;
+BEGIN
+    -- Check if there are products in categories the customer has purchased from
+    SELECT COUNT(DISTINCT p.category_id)
+    INTO v_count
+    FROM Orders o
+    JOIN Products p ON o.product_id = p.product_id
+    WHERE o.customer_id = customer_id_input;
+
+    IF v_count = 0 THEN
+        DBMS_OUTPUT.PUT_LINE('No categories found for customer ID: ' || customer_id_input);
+        RETURN;
+    END IF;
+
+    -- Find the latest order date for the customer and add one day
+    SELECT MAX(order_date) INTO rec_latest_order_date
+    FROM Orders
+    WHERE customer_id = customer_id_input;
+
+    Rec_recommendation_date := Rec_latest_order_date + 1;
+
+    -- Find the best-rated product in a category that the customer has purchased from
+    BEGIN
+        SELECT product_id INTO recommended_product_id
+        FROM (
+            SELECT p.product_id
+            FROM Reviews r
+            JOIN Products p ON r.product_id = p.product_id
+            WHERE p.category_id IN (
+                SELECT DISTINCT p.category_id
+                FROM Orders o
+                JOIN Products p ON o.product_id = p.product_id
+                WHERE o.customer_id = customer_id_input
+            )
+            AND r.product_id NOT IN (
+                SELECT product_id
+                FROM Orders
+                WHERE customer_id = customer_id_input
+            )
+            GROUP BY p.product_id
+            ORDER BY AVG(r.stars_given) DESC
+        )
+        WHERE ROWNUM = 1;
+
+        -- Insert the recommendation into the Recommendations table
+        INSERT INTO Recommendations (recommendation_id, customer_id, recommended_product_id, recommendation_date)
+        VALUES (recommendation_id_seq.NEXTVAL, customer_id_input, recommended_product_id, Rec_recommendation_date);
+
+        DBMS_OUTPUT.PUT_LINE('Recommendation made for customer ID: ' || customer_id_input || ' with product ID: ' || recommended_product_id || ' on ' || rec_recommendation_date);
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            DBMS_OUTPUT.PUT_LINE('No suitable recommendation found for customer ID: ' || customer_id_input);
+    END;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END Recommend_To_Customer;
+/
+
+
+
+
+CREATE OR REPLACE PROCEDURE List_Recommendations AS
+BEGIN
+    FOR rec IN (
+        SELECT c.first_name || ' ' || c.last_name AS customer_name, p.product_name, AVG(r.stars_given) AS avg_stars
+        FROM Recommendations rec
+        JOIN Customers c ON rec.customer_id = c.customer_id
+        JOIN Products p ON rec.recommended_product_id = p.product_id
+        JOIN Reviews r ON p.product_id = r.product_id
+        GROUP BY c.first_name, c.last_name, p.product_name
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('Customer: ' || rec.customer_name || ', Recommended Product: ' || rec.product_name || ', Average Stars: ' || rec.avg_stars);
+    END LOOP;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END List_Recommendations;
+/
+
+----------------------------------------------------------------
+--MEMEBER 6: SUPRAJYOTSNA
+
+---operation 21
+CREATE OR REPLACE PROCEDURE Income_By_State IS
+BEGIN
+  FOR rec IN (
+    SELECT c.state, SUM(i.amount) AS total_income
+    FROM Customers c
+    JOIN Orders o ON c.customer_id = o.customer_id
+    JOIN Invoices i ON o.order_id = i.order_id
+    GROUP BY c.state
+  ) LOOP
+    DBMS_OUTPUT.PUT_LINE('State: ' || rec.state || ', Total Income: $' || rec.total_income);
+  END LOOP;
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END Income_By_State;
+/
+
+--operation 22
+CREATE OR REPLACE PROCEDURE Best_Selling_Products (p_X IN NUMBER) IS
+BEGIN
+  FOR rec IN (
+    SELECT product_name PRODUCT_NAME,
+category_name CATEGORY_NAME,
+total_units_sold TOTAL_UNITS_SOLD,
+total_amount TOTAL_AMOUNT FROM (
+      SELECT p.product_name, pc.category_name, SUM(o.quantity) AS total_units_sold, SUM(o.quantity * p.unit_price) AS total_amount
+      FROM Products p
+      JOIN Product_Categories pc ON p.category_id = pc.category_id
+      JOIN Orders o ON p.product_id = o.product_id
+      GROUP BY p.product_name, pc.category_name
+      ORDER BY SUM(o.quantity) DESC
+    )
+    WHERE ROWNUM <= p_X
+  ) LOOP
+    DBMS_OUTPUT.PUT_LINE('Product: ' || rec.product_name || ', Category: ' || rec.category_name || 
+                         ', Units Sold: ' || rec.total_units_sold || ', Total Amount: $' || rec.total_amount);
+  END LOOP;
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END Best_Selling_Products;
+/
+
+
+CREATE OR REPLACE PROCEDURE Recommendations_Follow_Up IS
+BEGIN
+  FOR rec IN (
+    SELECT 
+      c.first_name || ' ' || c.last_name AS customer_name, 
+      p.product_name,
+      r.first_recommendation_date,
+      CASE 
+        WHEN EXISTS (
+          SELECT 1 
+          FROM Orders o 
+          WHERE o.customer_id = r.customer_id 
+            AND o.product_id = r.recommended_product_id 
+            AND o.order_date > r.first_recommendation_date
+        ) THEN 'Recommendation followed'
+        ELSE 'Recommendation not followed yet'
+      END AS follow_up_status
+    FROM (
+      SELECT 
+        rec.customer_id, 
+        rec.recommended_product_id, 
+        MIN(rec.recommendation_date) AS first_recommendation_date
+      FROM Recommendations rec
+      GROUP BY rec.customer_id, rec.recommended_product_id
+    ) r
+    JOIN Customers c ON r.customer_id = c.customer_id
+    JOIN Products p ON r.recommended_product_id = p.product_id
+  ) LOOP
+    DBMS_OUTPUT.PUT_LINE('Customer: ' || rec.customer_name || ', Recommended Product: ' || rec.product_name || ', Status: ' || rec.follow_up_status);
+  END LOOP;
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END Recommendations_Follow_Up;
+/
+
+
+
+CREATE OR REPLACE PROCEDURE Prod_Ord_By_Time (
+    p_start IN DATE,
+    p_end IN DATE
+) AS
+BEGIN
+    FOR rec IN (
+        SELECT 
+            P.product_name,
+            SUM(O.quantity) AS total_units_ordered,
+            COUNT(DISTINCT O.customer_id) AS total_customers
+        FROM 
+            Orders O
+            JOIN Products P ON O.product_id = P.product_id
+        WHERE 
+            O.order_date BETWEEN p_start AND p_end
+        GROUP BY 
+            P.product_name
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('Product: ' || rec.product_name || 
+                             ', Units: ' || rec.total_units_ordered ||
+                             ', Customers: ' || rec.total_customers);
+    END LOOP;
+END Prod_Ord_By_Time;
+/
+show errors;
+
+
+
+
+
+Begin
+
+DBMS_OUTPUT.ENABLE(1000000);
+
+dbms_output.put_line (' --------------------------------------------------------------------------------------------------------------------');
+dbms_output.put_line ('                                      MEMBER 1  (Manoj) OPERATIONS                                     ');
+dbms_output.put_line (' --------------------------------------------------------------------------------------------------------------------');
+
+--Q1
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('ADDING CUSTOMERS');
+dbms_output.put_line(' ');
+Add_Customer(customer_id_seq.NEXTVAL, 'Eve', 'Miller','eve.miller@gmail.com', 'San Diego', 'GA', 94751);
+Add_Customer(customer_id_seq.NEXTVAL,'Frank','Martinez','alice.martinez@outlook.com','Los Angeles','GA',51587);
+Add_Customer(customer_id_seq.NEXTVAL,'Alice','Johnson', 'bob.johnson@gmail.com', 'New York', 'TX', 38113);
+Add_Customer (customer_id_seq.NEXTVAL, 'Harry', 'Brown', 'diana.brown@gmail.com', 'New York', 'GA', 82677);
+Add_Customer (customer_id_seq.NEXTVAL, 'Harry', 'Martinez', 'harry.martinez@gmail.com', 'Philadelphia', 'PA', 62811);
+
+
+
+
+--Q3
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('ADDING CREDIT CARDS');
+dbms_output.put_line(' ');
+Add_CreditCard(FIND_CUSTOMER_ID('eve.miller@gmail.com'),12350, 'VISA', 2023, 10);
+Add_CreditCard(FIND_CUSTOMER_ID ('alice.martinez@outlook.com'),12352, 'AMEX', 2025, 05);
+Add_CreditCard(FIND_CUSTOMER_ID ('bob.johnson@gmail.com'),12355, 'Discover', 2023, 12);
+Add_CreditCard(FIND_CUSTOMER_ID ('diana.brown@gmail.com'),12357, 'MC', 2025, 07);
+Add_CreditCard(FIND_CUSTOMER_ID ('harry.martinez@gmail.com'),12359, 'Discover', 2023, 08);
+
+
+--Q2
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('CUSTOMERS IN THE GIVEN STATE');
+dbms_output.put_line(' ');
+Show_all_customers_in_state('GA');
+
+--Q4
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Card Expiry Report');
+dbms_output.put_line(' ');
+Report_Cards_Expire(date '2023-10-30');
+
+dbms_output.put_line(' --------------------------------------------------------------------------------------------------------------------');
+dbms_output.put_line('                                      MEMBER 2  (Ganesh) OPERATIONS                                     ');
+dbms_output.put_line (' --------------------------------------------------------------------------------------------------------------------');
+
+
+--Q5
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('ADDING CATEGORIES');
+dbms_output.put_line(' ');
+  Add_Category('Fashion', 'Clothing and accessories'); 
+  Add_Category('Beauty','Cosmetics and skincare products'); 
+  Add_Category('Sports and Fitness', 'Equipment and apparel'); 
+  Add_Category('Home and Garden', 'Furniture and decor'); 
+  Add_Category('Pets', 'Food and supplies');
+  Add_Category('Entertainment', 'Music and movies');
+  Add_Category('Electronics','TV, phone and radio');
+
+
+--Q6
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('ADDING PRODUCTS');
+dbms_output.put_line(' ');
+Add_Product ('42 inch tv',200,400,'Electronics');
+Add_Product ('75 inch tv',50,1500,'Electronics');
+Add_Product ('Best Hits of Adele',150,25,'Entertainment');
+Add_Product ('T-shirt',80,30,'Fashion');
+Add_Product ('Classic Rock Collection',120,15,'Home and Garden');
+Add_Product ('Jacket',73,55,'Fashion');
+Add_Product ('Modern Coffee Table',51,500,'Home and Garden');
+Add_Product ('Reclining Armchair',89,800,'Home and Garden');
+Add_Product ('Sectional Couch',75,3500,'Home and Garden');
+Add_Product ('Pants',65,25,'Fashion');
+
+--Q7
+--update inventory is called within place orders
+
+
+--Q8
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('REPORTING INVENTORY');
+dbms_output.put_line(' ');
+Report_Inventory;
+
+
+
+dbms_output.put_line(' --------------------------------------------------------------------------------------------------------------------');
+dbms_output.put_line('                                      MEMBER 3  (Shanmukhi) OPERATIONS                                     ');
+dbms_output.put_line(' --------------------------------------------------------------------------------------------------------------------');
+
+
+--Q9
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('ADDING ORDRES');
+dbms_output.put_line(' ');
+Place_Order('eve.miller@gmail.com', '42 inch tv', 1, 12350, '11-MAY-2023');
+Place_Order('diana.brown@gmail.com', 'Pants', 1, 12357, '13-MAY-2023');
+Place_Order('alice.martinez@outlook.com', 'T-shirt', 3, 12352, '16-MAY-2023');
+Place_Order('bob.johnson@gmail.com', '75 inch tv', 1, 12355, '13-MAY-2023');
+Place_Order('bob.johnson@gmail.com', 'Classic Rock Collection', 5, 12355, '17-MAY-2023');
+Place_Order('diana.brown@gmail.com', 'Reclining Armchair', 2, 12357, '18-MAY-2023');
+Place_Order('harry.martinez@gmail.com', 'Modern Coffee Table', 1, 12359, '19-MAY-2023');
+
+
+dbms_output.put_line(' ');
+dbms_output.put_line('REPORTING INVENTORY');
+dbms_output.put_line(' ');
+Report_Inventory;
+
+--Q10
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('DISPLAYING ALL ORDERS');
+dbms_output.put_line(' ');
+Show_Orders;
+
+
+--Q11
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('REPORTING ORDERS BY STATE');
+dbms_output.put_line(' ');
+Report_Orders_by_State('MD');
+Report_Orders_by_State('TX');
+
+dbms_output.put_line(' ');
+dbms_output.put_line('REPORTING INVENTORY');
+dbms_output.put_line(' ');
+Report_Inventory;
+
+
+dbms_output.put_line(' --------------------------------------------------------------------------------------------------------------------');
+dbms_output.put_line('                                      MEMBER 4  (Charan) OPERATIONS                                     ');
+dbms_output.put_line (' --------------------------------------------------------------------------------------------------------------------');
+
+
+--Q14
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('REPORTING BEST CUSTOMER');
+dbms_output.put_line(' ');
+Report_Best_Customers(3);
+
+--Q15
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Payments_to_CC');
+Payments_to_CC;
+dbms_output.put_line(' ');
+
+--Q16
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Thrifty_Customer');
+Thrifty_Customer(1) ;
+dbms_output.put_line(' ');
+
+
+
+dbms_output.put_line(' --------------------------------------------------------------------------------------------------------------------');
+dbms_output.put_line ('                                      MEMBER 5  (Akshith) OPERATIONS                                     ');
+dbms_output.put_line (' --------------------------------------------------------------------------------------------------------------------');
+
+
+
+--Q17
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('ADDING reviews');
+Add_Review('eve.miller@gmail.com', 3, '42 inch tv', 'Decent picture quality for the price.');
+Add_Review('alice.martinez@outlook.com', 4, 'T-shirt', 'One of the best T-shirt i have but a bit pricy for quality.');
+Add_Review('bob.johnson@gmail.com', 5, '75 inch tv', 'Excellent picture and sound quality. Highly recommended.');
+Add_Review('bob.johnson@gmail.com', 3, 'Classic Rock Collection', 'Good mix of classic hits, but a few songs were unexpected.');
+Add_Review('diana.brown@gmail.com', 5, 'Reclining Armchair', 'Very comfortable and stylish. Perfect for relaxing.');
+Add_Review('harry.martinez@gmail.com', 3, 'Modern Coffee Table', 'Stylish and functional. Fits perfectly in my living room.');
+Add_Review('diana.brown@gmail.com', 5, 'Pants', 'That one pant which should be in everyone closet for this winter');
+
+--Q18
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Buy_Or_Beware: Best and Worst Products');
+Buy_Or_Beware(3);
+dbms_output.put_line(' ');
+
+--Q19
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Recommend_To_Customer');
+Recommend_To_Customer(1);
+Recommend_To_Customer(2);
+dbms_output.put_line(' ');
+
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('List_Recommendations');
+List_Recommendations;
+dbms_output.put_line(' ');
+
+
+
+dbms_output.put_line(' --------------------------------------------------------------------------------------------------------------------');
+dbms_output.put_line ('                                      MEMBER 6  (Jyotsna) OPERATIONS                                     ');
+dbms_output.put_line (' --------------------------------------------------------------------------------------------------------------------');
+
+
+---Q21---
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Income_By_state');
+Income_By_state;
+dbms_output.put_line(' ');
+ 
+---Q22---
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Best_Selling_Products');
+ Best_Selling_Products(2);
+ dbms_output.put_line(' ');
+
+---Q23---
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Recommendations_Follow_Up');
+Recommendations_Follow_Up;
+dbms_output.put_line(' ');
+    
+dbms_output.put_line(' ');
+Place_Order('alice.martinez@outlook.com','Pants', 1, 12352, '27-MAY-2023');
+dbms_output.put_line(' ');
+    
+dbms_output.put_line(' ');
+Recommendations_Follow_Up;
+dbms_output.put_line(' ');
+
+---Q24---
+dbms_output.put_line(' ');
+dbms_output.put_line(' ');
+dbms_output.put_line('Products_Ordered_By_Time_Interval');
+    Prod_Ord_By_Time(
+        TO_DATE('2023-05-01', 'YYYY-MM-DD'),
+        TO_DATE('2023-05-31', 'YYYY-MM-DD')
+    );
+
+dbms_output.put_line(' ');
+
+End;
+/
+
+SELECT * FROM RECOMMENDATIONS;
+SELECT * FROM REVIEWS;
+SELECT * FROM INVOICES;
+SELECT * FROM Credit_Cards;
+SELECT * FROM ORDERS;
+SELECT * FROM PRODUCTS;
+SELECT * FROM Product_Categories;
+SELECT * FROM Customers;
+
+SELECT c.first_name || ' ' || c.last_name AS customer_name,
+       p.product_name,
+       AVG(r.stars_given) AS avg_stars
+FROM Recommendations rec
+INNER JOIN Customers c ON rec.customer_id = c.customer_id
+INNER JOIN Products p ON rec.recommended_product_id = p.product_id
+INNER JOIN Reviews r ON p.product_id = r.product_id
+GROUP BY c.first_name, c.last_name, p.product_name
+ORDER BY c.last_name, c.first_name, p.product_name;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+
+Table RECOMMENDATIONS dropped.
+
+
+Table REVIEWS dropped.
+
+
+Table INVOICES dropped.
+
+
+Table CREDIT_CARDS dropped.
+
+
+Table ORDERS dropped.
+
+
+Table PRODUCTS dropped.
+
+
+Table PRODUCT_CATEGORIES dropped.
+
+
+Table CUSTOMERS dropped.
+
+
+Table CUSTOMERS created.
+
+
+Table PRODUCT_CATEGORIES created.
+
+
+Table PRODUCTS created.
+
+
+Table ORDERS created.
+
+
+Table CREDIT_CARDS created.
+
+
+Table INVOICES created.
+
+
+Table REVIEWS created.
+
+
+Table RECOMMENDATIONS created.
+
+
+Sequence CUSTOMER_ID_SEQ dropped.
+
+
+Sequence CUSTOMER_ID_SEQ created.
+
+
+Procedure ADD_CUSTOMER compiled
+
+
+Procedure SHOW_ALL_CUSTOMERS_IN_STATE compiled
+
+
+Function FIND_CUSTOMER_ID compiled
+
+
+Procedure ADD_CREDITCARD compiled
+
+
+Procedure REPORT_CARDS_EXPIRE compiled
+
+No errors.
+
+Sequence ADD_CATEGORY_SEQ dropped.
+
+
+Sequence ADD_CATEGORY_SEQ created.
+
+
+Procedure ADD_CATEGORY compiled
+
+
+Function FIND_PRODUCT_CATEGORY_ID compiled
+
+
+Sequence ADD_PROD_SEQ dropped.
+
+
+Sequence ADD_PROD_SEQ created.
+
+
+Procedure ADD_PRODUCT compiled
+
+
+Procedure UPDATE_INVENTORY compiled
+
+
+Procedure REPORT_INVENTORY compiled
+
+No errors.
+
+Sequence ORDER_ID_SEQ dropped.
+
+
+Sequence ORDER_ID_SEQ created.
+
+
+Function FIND_CUSTOMER_ID compiled
+
+No errors.
+
+Function FIND_PRODUCT_ID compiled
+
+No errors.
+
+Procedure INVOICE_CUSTOMER compiled
+
+
+Procedure PLACE_ORDER compiled
+
+
+Procedure SHOW_ORDERS compiled
+
+
+Procedure REPORT_ORDERS_BY_STATE compiled
+
+
+Trigger REPORT_LOW_INVENTORY compiled
+
+
+Procedure REPORT_BEST_CUSTOMERS compiled
+
+No errors.
+
+Procedure PAYMENTS_TO_CC compiled
+
+
+Procedure THRIFTY_CUSTOMER compiled
+
+
+Sequence ADD_REV_SEQ dropped.
+
+
+Sequence ADD_REV_SEQ created.
+
+
+Procedure ADD_REVIEW compiled
+
+
+Function GET_PRODUCT_NAME compiled
+
+No errors.
+
+Procedure BUY_OR_BEWARE compiled
+
+No errors.
+
+Sequence RECOMMENDATION_ID_SEQ dropped.
+
+
+Sequence RECOMMENDATION_ID_SEQ created.
+
+
+Procedure RECOMMEND_TO_CUSTOMER compiled
+
+
+Procedure LIST_RECOMMENDATIONS compiled
+
+
+Procedure INCOME_BY_STATE compiled
+
+
+Procedure BEST_SELLING_PRODUCTS compiled
+
+
+Procedure RECOMMENDATIONS_FOLLOW_UP compiled
+
+
+Procedure PROD_ORD_BY_TIME compiled
+
+No errors.
+--------------------------------------------------------------------------------------------------------------------
+                                      MEMBER 1  (Manoj) OPERATIONS                                     
+ --------------------------------------------------------------------------------------------------------------------
+ 
+ 
+ADDING CUSTOMERS
+ 
+ADDING CUSTOMER Eve Miller
+ADDING CUSTOMER Frank Martinez
+ADDING CUSTOMER Alice Johnson
+ADDING CUSTOMER Harry Brown
+ADDING CUSTOMER Harry Martinez
+ 
+ 
+ADDING CREDIT CARDS
+ 
+ADDING CREDIT CARD WITH CARD NUMBER 12350
+ADDING CREDIT CARD WITH CARD NUMBER 12352
+ADDING CREDIT CARD WITH CARD NUMBER 12355
+ADDING CREDIT CARD WITH CARD NUMBER 12357
+ADDING CREDIT CARD WITH CARD NUMBER 12359
+ 
+ 
+CUSTOMERS IN THE GIVEN STATE
+ 
+Customers in GA
+Eve   Miller | | eve.miller@gmail.com | | 12350 | | VISA
+Frank   Martinez | | alice.martinez@outlook.com | | 12352 | | AMEX
+Harry   Brown | | diana.brown@gmail.com | | 12357 | | MC
+ 
+ 
+Card Expiry Report
+ 
+Martinez, Harry, 12359, Discover, 2023, 8
+Miller, Eve, 12350, VISA, 2023, 10
+ --------------------------------------------------------------------------------------------------------------------
+                                      MEMBER 2  (Ganesh) OPERATIONS                                     
+ --------------------------------------------------------------------------------------------------------------------
+ 
+ 
+ADDING CATEGORIES
+ 
+Fashion is added successfully
+Beauty is added successfully
+Sports and Fitness is added successfully
+Home and Garden is added successfully
+Pets is added successfully
+Entertainment is added successfully
+Electronics is added successfully
+ 
+ 
+ADDING PRODUCTS
+ 
+42 inch tv product added successfully
+75 inch tv product added successfully
+Best Hits of Adele product added successfully
+T-shirt product added successfully
+Classic Rock Collection product added successfully
+Jacket product added successfully
+Modern Coffee Table product added successfully
+Reclining Armchair product added successfully
+Sectional Couch product added successfully
+Pants product added successfully
+ 
+ 
+REPORTING INVENTORY
+ 
+Category Name = Entertainment || Available Quantity = 150
+Category Name = Home and Garden || Available Quantity = 335
+Category Name = Pets || Available Quantity = 0
+Category Name = Beauty || Available Quantity = 0
+Category Name = Electronics || Available Quantity = 250
+Category Name = Fashion || Available Quantity = 218
+Category Name = Sports and Fitness || Available Quantity = 0
+ --------------------------------------------------------------------------------------------------------------------
+                                      MEMBER 3  (Shanmukhi) OPERATIONS                                     
+ --------------------------------------------------------------------------------------------------------------------
+ 
+ 
+ADDING ORDRES
+ 
+ADDING RECORDS TO INVOICE TABLE
+Record inserted into Invoice table with Invoice ID: 1
+The current quantity of Product : 1001is 199
+ADDING RECORDS TO INVOICE TABLE
+Record inserted into Invoice table with Invoice ID: 2
+The current quantity of Product : 1010is 64
+ADDING RECORDS TO INVOICE TABLE
+Record inserted into Invoice table with Invoice ID: 3
+The current quantity of Product : 1004is 77
+ADDING RECORDS TO INVOICE TABLE
+Record inserted into Invoice table with Invoice ID: 4
+Available Quantity is less than 50 for below product
+Product ID: 1002
+Product Name: 75 inch tv
+Available Quantity: 49
+The current quantity of Product : 1002is 49
+ 
+-------------------RESTOCKING INVENTORY-------------------
+PRODUCT ID: 1002 is RESTOCKED to new available quantity 100
+as the Report_low_inventory trigger is activated
+ 
+ADDING RECORDS TO INVOICE TABLE
+Record inserted into Invoice table with Invoice ID: 5
+The current quantity of Product : 1005is 115
+ADDING RECORDS TO INVOICE TABLE
+Record inserted into Invoice table with Invoice ID: 6
+The current quantity of Product : 1008is 87
+ADDING RECORDS TO INVOICE TABLE
+Record inserted into Invoice table with Invoice ID: 7
+The current quantity of Product : 1007is 50
+ 
+REPORTING INVENTORY
+ 
+Category Name = Entertainment || Available Quantity = 150
+Category Name = Home and Garden || Available Quantity = 327
+Category Name = Pets || Available Quantity = 0
+Category Name = Beauty || Available Quantity = 0
+Category Name = Electronics || Available Quantity = 299
+Category Name = Fashion || Available Quantity = 214
+Category Name = Sports and Fitness || Available Quantity = 0
+ 
+ 
+DISPLAYING ALL ORDERS
+ 
+Customer Name: Eve,Miller, Product: 42 inch tv, Quantity Ordered: 1, Amount Charged: $400
+Customer Name: Alice,Johnson, Product: 75 inch tv, Quantity Ordered: 1, Amount Charged: $1500
+Customer Name: Frank,Martinez, Product: T-shirt, Quantity Ordered: 3, Amount Charged: $90
+Customer Name: Alice,Johnson, Product: Classic Rock Collection, Quantity Ordered: 5, Amount Charged: $75
+Customer Name: Harry,Martinez, Product: Modern Coffee Table, Quantity Ordered: 1, Amount Charged: $500
+Customer Name: Harry,Brown, Product: Reclining Armchair, Quantity Ordered: 2, Amount Charged: $1600
+Customer Name: Harry,Brown, Product: Pants, Quantity Ordered: 1, Amount Charged: $25
+Total number of orders: 7
+ 
+ 
+REPORTING ORDERS BY STATE
+ 
+Reporting Orders in MD
+No orders found from MD
+Reporting Orders in TX
+Customer Name: Alice Johnson
+Email: bob.johnson@gmail.com
+Total Orders Placed: 2
+Total Amount Spent: $1575
+----------------------------------
+Grand Total Amount Spent: $1575
+ 
+REPORTING INVENTORY
+ 
+Category Name = Entertainment || Available Quantity = 150
+Category Name = Home and Garden || Available Quantity = 327
+Category Name = Pets || Available Quantity = 0
+Category Name = Beauty || Available Quantity = 0
+Category Name = Electronics || Available Quantity = 299
+Category Name = Fashion || Available Quantity = 214
+Category Name = Sports and Fitness || Available Quantity = 0
+ --------------------------------------------------------------------------------------------------------------------
+                                      MEMBER 4  (Charan) OPERATIONS                                     
+ --------------------------------------------------------------------------------------------------------------------
+ 
+ 
+REPORTING BEST CUSTOMER
+ 
+Customer Name: EveMiller, Total Amount Spent: 400
+Customer Name: HarryMartinez, Total Amount Spent: 500
+Customer Name: AliceJohnson, Total Amount Spent: 1575
+Customer Name: FrankMartinez, Total Amount Spent: 90
+Customer Name: HarryBrown, Total Amount Spent: 1625
+ 
+ 
+Payments_to_CC
+Total fee for VISA: $12
+Total fee for MC: $48.75
+Total fee for AMEX: $4.5
+Total fee for Discover: $41.5
+ 
+ 
+ 
+Thrifty_Customer
+Customer ID: 2, Name: Frank Martinez, Total Spent: 90
+ 
+ --------------------------------------------------------------------------------------------------------------------
+                                      MEMBER 5  (Akshith) OPERATIONS                                     
+ --------------------------------------------------------------------------------------------------------------------
+ 
+ 
+ADDING reviews
+Review added successfully!
+Review added successfully!
+Review added successfully!
+Review added successfully!
+Review added successfully!
+Review added successfully!
+Review added successfully!
+ 
+ 
+Buy_Or_Beware: Best and Worst Products
+Top Rated Products:
+Avg Stars: 5, Product ID: 1002, Product Name: 75 inch tv, Std Dev: 0
+Avg Stars: 5, Product ID: 1008, Product Name: Reclining Armchair, Std Dev: 0
+Avg Stars: 5, Product ID: 1010, Product Name: Pants, Std Dev: 0
+Buyer Beware: Stay Away from...
+Avg Stars: 3, Product ID: 1001, Product Name: 42 inch tv, Std Dev: 0
+Avg Stars: 3, Product ID: 1005, Product Name: Classic Rock Collection, Std Dev: 0
+Avg Stars: 3, Product ID: 1007, Product Name: Modern Coffee Table, Std Dev: 0
+ 
+ 
+ 
+Recommend_To_Customer
+Recommendation made for customer ID: 1 with product ID: 1002 on 12-MAY-23
+Recommendation made for customer ID: 2 with product ID: 1010 on 17-MAY-23
+ 
+ 
+ 
+List_Recommendations
+Customer: Frank Martinez, Recommended Product: Pants, Average Stars: 5
+Customer: Eve Miller, Recommended Product: 75 inch tv, Average Stars: 5
+ 
+ --------------------------------------------------------------------------------------------------------------------
+                                      MEMBER 6  (Jyotsna) OPERATIONS                                     
+ --------------------------------------------------------------------------------------------------------------------
+ 
+ 
+Income_By_state
+State: GA, Total Income: $2115
+State: TX, Total Income: $1575
+State: PA, Total Income: $500
+ 
+ 
+ 
+Best_Selling_Products
+Product: Classic Rock Collection, Category: Home and Garden, Units Sold: 5, Total Amount: $75
+Product: T-shirt, Category: Fashion, Units Sold: 3, Total Amount: $90
+ 
+ 
+ 
+Recommendations_Follow_Up
+Customer: Frank Martinez, Recommended Product: Pants, Status: Recommendation not followed yet
+Customer: Eve Miller, Recommended Product: 75 inch tv, Status: Recommendation not followed yet
+ 
+ 
+ADDING RECORDS TO INVOICE TABLE
+Record inserted into Invoice table with Invoice ID: 8
+The current quantity of Product : 1010is 63
+ 
+ 
+Customer: Frank Martinez, Recommended Product: Pants, Status: Recommendation followed
+Customer: Eve Miller, Recommended Product: 75 inch tv, Status: Recommendation not followed yet
+ 
+ 
+ 
+Products_Ordered_By_Time_Interval
+Product: Pants, Units: 2, Customers: 2
+Product: 42 inch tv, Units: 1, Customers: 1
+Product: Classic Rock Collection, Units: 5, Customers: 1
+Product: 75 inch tv, Units: 1, Customers: 1
+Product: Modern Coffee Table, Units: 1, Customers: 1
+Product: Reclining Armchair, Units: 2, Customers: 1
+Product: T-shirt, Units: 3, Customers: 1
+ 
+
+
+PL/SQL procedure successfully completed.
+
+
+RECOMMENDATION_ID CUSTOMER_ID RECOMMENDED_PRODUCT_ID RECOMMEND
+----------------- ----------- ---------------------- ---------
+                1           1                   1002 12-MAY-23
+                2           2                   1010 17-MAY-23
+
+
+ REVIEW_ID PRODUCT_ID REVIEWER_EMAIL                                                                                       STARS_GIVEN REVIEW_TEXT                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+---------- ---------- ---------------------------------------------------------------------------------------------------- ----------- ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+         1       1001 eve.miller@gmail.com                                                                                           3 Decent picture quality for the price.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+         2       1004 alice.martinez@outlook.com                                                                                     4 One of the best T-shirt i have but a bit pricy for quality.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+         3       1002 bob.johnson@gmail.com                                                                                          5 Excellent picture and sound quality. Highly recommended.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+         4       1005 bob.johnson@gmail.com                                                                                          3 Good mix of classic hits, but a few songs were unexpected.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+         5       1008 diana.brown@gmail.com                                                                                          5 Very comfortable and stylish. Perfect for relaxing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+         6       1007 harry.martinez@gmail.com                                                                                       3 Stylish and functional. Fits perfectly in my living room.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+         7       1010 diana.brown@gmail.com                                                                                          5 That one pant which should be in everyone closet for this winter                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+
+7 rows selected. 
+
+
+INVOICE_ID   ORDER_ID CUSTOMER_ID CREDIT_CARD_NUMBER     AMOUNT
+---------- ---------- ----------- ------------------ ----------
+         1          1           1              12350        400
+         2          2           4              12357         25
+         3          3           2              12352         90
+         4          4           3              12355       1500
+         5          5           3              12355         75
+         6          6           4              12357       1600
+         7          7           5              12359        500
+         8          8           2              12352         25
+
+8 rows selected. 
+
+
+CUSTOMER_ID CREDIT_CARD_NUMBER CREDIT_CAR EXPIRATION_YEAR EXPIRATION_MONTH
+----------- ------------------ ---------- --------------- ----------------
+          1              12350 VISA                  2023               10
+          2              12352 AMEX                  2025                5
+          3              12355 Discover              2023               12
+          4              12357 MC                    2025                7
+          5              12359 Discover              2023                8
+
+
+  ORDER_ID CUSTOMER_ID PRODUCT_ID   QUANTITY ORDER_DAT
+---------- ----------- ---------- ---------- ---------
+         1           1       1001          1 11-MAY-23
+         2           4       1010          1 13-MAY-23
+         3           2       1004          3 16-MAY-23
+         4           3       1002          1 13-MAY-23
+         5           3       1005          5 17-MAY-23
+         6           4       1008          2 18-MAY-23
+         7           5       1007          1 19-MAY-23
+         8           2       1010          1 27-MAY-23
+
+8 rows selected. 
+
+
+PRODUCT_ID PRODUCT_NAME                                                                                         AVAILABLE_QUANTITY_IN_STORE UNIT_PRICE CATEGORY_ID
+---------- ---------------------------------------------------------------------------------------------------- --------------------------- ---------- -----------
+      1001 42 inch tv                                                                                                                   199        400           7
+      1002 75 inch tv                                                                                                                   100       1500           7
+      1003 Best Hits of Adele                                                                                                           150         25           6
+      1004 T-shirt                                                                                                                       77         30           1
+      1005 Classic Rock Collection                                                                                                      115         15           4
+      1006 Jacket                                                                                                                        73         55           1
+      1007 Modern Coffee Table                                                                                                           50        500           4
+      1008 Reclining Armchair                                                                                                            87        800           4
+      1009 Sectional Couch                                                                                                               75       3500           4
+      1010 Pants                                                                                                                         63         25           1
+
+10 rows selected. 
+
+
+CATEGORY_ID CATEGORY_NAME                                      DESCRIPTION                                                                                                                                                                                             
+----------- -------------------------------------------------- --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+          1 Fashion                                            Clothing and accessories                                                                                                                                                                                
+          2 Beauty                                             Cosmetics and skincare products                                                                                                                                                                         
+          3 Sports and Fitness                                 Equipment and apparel                                                                                                                                                                                   
+          4 Home and Garden                                    Furniture and decor                                                                                                                                                                                     
+          5 Pets                                               Food and supplies                                                                                                                                                                                       
+          6 Entertainment                                      Music and movies                                                                                                                                                                                        
+          7 Electronics                                        TV, phone and radio                                                                                                                                                                                     
+
+7 rows selected. 
+
+
+CUSTOMER_ID FIRST_NAME                                         LAST_NAME                                          EMAIL                                                                                                CITY                                               STATE                                                     ZIP
+----------- -------------------------------------------------- -------------------------------------------------- ---------------------------------------------------------------------------------------------------- -------------------------------------------------- -------------------------------------------------- ----------
+          1 Eve                                                Miller                                             eve.miller@gmail.com                                                                                 San Diego                                          GA                                                      94751
+          2 Frank                                              Martinez                                           alice.martinez@outlook.com                                                                           Los Angeles                                        GA                                                      51587
+          3 Alice                                              Johnson                                            bob.johnson@gmail.com                                                                                New York                                           TX                                                      38113
+          4 Harry                                              Brown                                              diana.brown@gmail.com                                                                                New York                                           GA                                                      82677
+          5 Harry                                              Martinez                                           harry.martinez@gmail.com                                                                             Philadelphia                                       PA                                                      62811
+
+
+CUSTOMER_NAME                                                                                         PRODUCT_NAME                                                                                          AVG_STARS
+----------------------------------------------------------------------------------------------------- ---------------------------------------------------------------------------------------------------- ----------
+Frank Martinez                                                                                        Pants                                                                                                         5
+Eve Miller                                                                                            75 inch tv                                                                                                    5
+
+
+*/
